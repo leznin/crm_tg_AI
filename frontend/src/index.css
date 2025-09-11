@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global dark theme baseline */
+html, body, #root {
+	height: 100%;
+	background: #0d0f15;
+	color-scheme: dark;
+}
+
+body {
+	@apply antialiased text-gray-200 bg-[radial-gradient(circle_at_20%_20%,rgba(88,28,135,0.25),transparent_60%),radial-gradient(circle_at_80%_60%,rgba(59,130,246,0.20),transparent_55%),#0d0f15];
+	background-attachment: fixed;
+	font-feature-settings: 'cv02','cv03','cv04','cv11';
+}
+
+/* Scrollbar styling */
+*::-webkit-scrollbar { width: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #28313d; border-radius: 20px; border: 2px solid #0d0f15; }
+*::-webkit-scrollbar-thumb:hover { background: #34404f; }
+
+/* Utility helpers */
+.glass-panel { @apply bg-surface-100/60 backdrop-blur-md shadow-elevated border border-white/5 rounded-xl; }
+.card-hover { @apply transition-colors duration-200 hover:bg-surface-200/60 hover:shadow-elevated-sm; }
+
+/* Text selection */
+::selection { background: rgba(96,165,250,0.35); color: #fff; }
+
+/* Focus outlines unified */
+:focus-visible { outline: 2px solid rgba(96,165,250,0.65); outline-offset: 2px; }
+
+/* Animations (mirroring tailwind keyframes if needed in raw CSS usage) */
+@keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes scale-in { 0% { opacity: 0; transform: scale(.96);} 100% { opacity:1; transform:scale(1);} }

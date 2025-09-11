@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "fastapi-telegram-app"
+version = "0.1.0"
+description = "A FastAPI application integrated with Telegram bot and MySQL."
+authors = ["Your Name <youremail@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.75.0"
+uvicorn = "^0.17.0"
+sqlalchemy = "^1.4.27"
+mysqlclient = "^2.0.3"
+python-telegram-bot = "^13.7"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
