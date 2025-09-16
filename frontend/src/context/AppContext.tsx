@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { Chat, Account, ChatSummary, ApiConfig, AnalyticsData, Message, TransferRecord, Manager, ChatMember } from '../types';
+import { Chat, Account, ChatSummary, ApiConfig, AnalyticsData, Message, TransferRecord, Manager, ChatMember, BusinessAccount, BusinessChat, BusinessMessage } from '../types';
+
+const API_BASE_URL = 'http://localhost:8000';
 
 interface AppContextType {
   // API Configuration
@@ -72,6 +74,30 @@ interface AppContextType {
   } | null;
   isLoadingBalance: boolean;
   loadBalance: () => Promise<void>;
+
+  // Business Accounts
+  businessAccounts: BusinessAccount[];
+  activeBusinessAccount: BusinessAccount | null;
+  setActiveBusinessAccount: (account: BusinessAccount | null) => void;
+  loadBusinessAccounts: () => Promise<void>;
+  isLoadingBusinessAccounts: boolean;
+
+  // Business Chats
+  businessChats: BusinessChat[];
+  activeBusinessChat: BusinessChat | null;
+  setActiveBusinessChat: (chat: BusinessChat | null) => void;
+  loadBusinessChats: (accountId: number) => Promise<void>;
+  isLoadingBusinessChats: boolean;
+
+  // Business Messages
+  businessMessages: BusinessMessage[];
+  loadBusinessMessages: (chatId: number, limit?: number, offset?: number) => Promise<void>;
+  sendBusinessMessage: (connectionId: string, chatId: number, text: string) => Promise<void>;
+  sendBusinessPhoto: (connectionId: string, chatId: number, fileId: string, caption?: string) => Promise<void>;
+  sendBusinessDocument: (connectionId: string, chatId: number, fileId: string, caption?: string) => Promise<void>;
+  uploadFile: (file: File) => Promise<{file_id: string; message_type: string}>;
+  isLoadingBusinessMessages: boolean;
+  isSendingMessage: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -108,6 +134,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     formatted_usage: string;
   } | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+
+  // Business Accounts state
+  const [businessAccounts, setBusinessAccounts] = useState<BusinessAccount[]>([]);
+  const [activeBusinessAccount, setActiveBusinessAccount] = useState<BusinessAccount | null>(null);
+  const [isLoadingBusinessAccounts, setIsLoadingBusinessAccounts] = useState(false);
+
+  // Business Chats state
+  const [businessChats, setBusinessChats] = useState<BusinessChat[]>([]);
+  const [activeBusinessChat, setActiveBusinessChat] = useState<BusinessChat | null>(null);
+  const [isLoadingBusinessChats, setIsLoadingBusinessChats] = useState(false);
+
+  // Business Messages state
+  const [businessMessages, setBusinessMessages] = useState<BusinessMessage[]>([]);
+  const [isLoadingBusinessMessages, setIsLoadingBusinessMessages] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   // --- Migration & Initial Load ---
   useEffect(() => {
@@ -346,7 +387,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // API functions for server communication
   const loadApiConfigFromServer = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/settings/api-config', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/api-config`, {
         credentials: 'include'
       });
       if (response.ok) {
@@ -372,7 +413,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const migrateConfigToServer = useCallback(async (config: ApiConfig) => {
     try {
       // First check if server already has configuration
-      const checkResponse = await fetch('/api/v1/settings/api-config', {
+      const checkResponse = await fetch(`${API_BASE_URL}/api/v1/settings/api-config`, {
         credentials: 'include'
       });
       
@@ -394,7 +435,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           openrouter_api_key: serverHasApiKey ? serverConfig.openrouter_api_key : config.openrouter_api_key
         };
         
-        await fetch('/api/v1/settings/api-config', {
+        await fetch(`${API_BASE_URL}/api/v1/settings/api-config`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -404,7 +445,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
       } else {
         // Server doesn't have config, migrate from localStorage
-        await fetch('/api/v1/settings/api-config', {
+        await fetch(`${API_BASE_URL}/api/v1/settings/api-config`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -423,7 +464,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateApiConfig = useCallback(async (config: Partial<ApiConfig>) => {
     try {
-      const response = await fetch('/api/v1/settings/api-config', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings/api-config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -687,7 +728,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     loadBalance: async () => {
       setIsLoadingBalance(true);
       try {
-        const response = await fetch('/api/v1/settings/openrouter/balance', {
+        const response = await fetch(`${API_BASE_URL}/api/v1/settings/openrouter/balance`, {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
@@ -705,7 +746,260 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } finally {
         setIsLoadingBalance(false);
       }
-    }
+    },
+
+    // Business Accounts
+    businessAccounts,
+    activeBusinessAccount,
+    setActiveBusinessAccount,
+    isLoadingBusinessAccounts,
+    loadBusinessAccounts: useCallback(async () => {
+      setIsLoadingBusinessAccounts(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setBusinessAccounts(data.accounts || []);
+        } else if (response.status === 401) {
+          console.warn('Authentication expired or invalid - redirecting to login');
+          // Clear authentication state
+          localStorage.removeItem('telegram_crm_logged_in');
+          // Small delay to let user see the warning
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+          setBusinessAccounts([]);
+        } else {
+          console.error(`Failed to load business accounts: ${response.status} ${response.statusText}`);
+          setBusinessAccounts([]);
+        }
+      } catch (error) {
+        console.error('Error loading business accounts:', error);
+        setBusinessAccounts([]);
+      } finally {
+        setIsLoadingBusinessAccounts(false);
+      }
+    }, []),
+
+    // Business Chats
+    businessChats,
+    activeBusinessChat,
+    setActiveBusinessChat,
+    isLoadingBusinessChats,
+    loadBusinessChats: useCallback(async (accountId: number) => {
+      setIsLoadingBusinessChats(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/${accountId}/chats`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setBusinessChats(data.chats || []);
+        } else {
+          console.error('Failed to load business chats');
+        }
+      } catch (error) {
+        console.error('Error loading business chats:', error);
+      } finally {
+        setIsLoadingBusinessChats(false);
+      }
+    }, []),
+
+    // Business Messages
+    businessMessages,
+    isLoadingBusinessMessages,
+    isSendingMessage,
+    loadBusinessMessages: useCallback(async (chatId: number, limit = 50, offset = 0) => {
+      setIsLoadingBusinessMessages(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/chats/${chatId}/messages?limit=${limit}&offset=${offset}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (offset === 0) {
+            setBusinessMessages(data.messages || []);
+          } else {
+            setBusinessMessages(prev => [...prev, ...(data.messages || [])]);
+          }
+        } else {
+          console.error('Failed to load business messages');
+        }
+      } catch (error) {
+        console.error('Error loading business messages:', error);
+      } finally {
+        setIsLoadingBusinessMessages(false);
+      }
+    }, []),
+
+    sendBusinessMessage: useCallback(async (connectionId: string, chatId: number, text: string) => {
+      setIsSendingMessage(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/send-message`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            business_connection_id: connectionId,
+            chat_id: chatId,
+            text: text
+          }),
+        });
+
+        if (response.ok) {
+          // Reload messages after sending
+          if (activeBusinessChat) {
+            const reloadResponse = await fetch(`${API_BASE_URL}/api/v1/business-accounts/chats/${activeBusinessChat.id}/messages?limit=50&offset=0`, {
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
+            if (reloadResponse.ok) {
+              const data = await reloadResponse.json();
+              setBusinessMessages(data.messages || []);
+            }
+          }
+        } else {
+          console.error('Failed to send business message');
+          throw new Error('Failed to send message');
+        }
+      } catch (error) {
+        console.error('Error sending business message:', error);
+        throw error;
+      } finally {
+        setIsSendingMessage(false);
+      }
+    }, [activeBusinessChat]),
+
+    sendBusinessPhoto: useCallback(async (connectionId: string, chatId: number, fileId: string, caption?: string) => {
+      setIsSendingMessage(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/send-photo`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            business_connection_id: connectionId,
+            chat_id: chatId,
+            photo_file_id: fileId,
+            caption: caption
+          }),
+        });
+
+        if (response.ok) {
+          // Reload messages after sending
+          if (activeBusinessChat) {
+            const reloadResponse = await fetch(`${API_BASE_URL}/api/v1/business-accounts/chats/${activeBusinessChat.id}/messages?limit=50&offset=0`, {
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
+            if (reloadResponse.ok) {
+              const data = await reloadResponse.json();
+              setBusinessMessages(data.messages || []);
+            }
+          }
+        } else {
+          console.error('Failed to send business photo');
+          throw new Error('Failed to send photo');
+        }
+      } catch (error) {
+        console.error('Error sending business photo:', error);
+        throw error;
+      } finally {
+        setIsSendingMessage(false);
+      }
+    }, [activeBusinessChat]),
+
+    sendBusinessDocument: useCallback(async (connectionId: string, chatId: number, fileId: string, caption?: string) => {
+      setIsSendingMessage(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/send-document`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            business_connection_id: connectionId,
+            chat_id: chatId,
+            document_file_id: fileId,
+            caption: caption
+          }),
+        });
+
+        if (response.ok) {
+          // Reload messages after sending
+          if (activeBusinessChat) {
+            const reloadResponse = await fetch(`${API_BASE_URL}/api/v1/business-accounts/chats/${activeBusinessChat.id}/messages?limit=50&offset=0`, {
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
+            if (reloadResponse.ok) {
+              const data = await reloadResponse.json();
+              setBusinessMessages(data.messages || []);
+            }
+          }
+        } else {
+          console.error('Failed to send business document');
+          throw new Error('Failed to send document');
+        }
+      } catch (error) {
+        console.error('Error sending business document:', error);
+        throw error;
+      } finally {
+        setIsSendingMessage(false);
+      }
+    }, [activeBusinessChat]),
+
+    uploadFile: useCallback(async (file: File) => {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${API_BASE_URL}/api/v1/files/upload-to-telegram`, {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          return {
+            file_id: data.file_id,
+            message_type: data.message_type
+          };
+        } else {
+          console.error('Failed to upload file');
+          throw new Error('Failed to upload file');
+        }
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        throw error;
+      }
+    }, [])
   };
 
   // Seed a second manager with its own distinct chats if only one manager exists

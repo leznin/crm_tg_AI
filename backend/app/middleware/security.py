@@ -32,14 +32,18 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if settings.ENVIRONMENT == "production":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             
-        # Content Security Policy
+        # Content Security Policy - allow connections from frontend in development
+        csp_connect_src = "'self'"
+        if settings.ENVIRONMENT == "development":
+            csp_connect_src = "'self' http://localhost:3000 http://localhost:5173"
+        
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
             "font-src 'self'; "
-            "connect-src 'self'; "
+            f"connect-src {csp_connect_src}; "
             "frame-ancestors 'none';"
         )
         

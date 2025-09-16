@@ -13,7 +13,7 @@ from app.schemas.settings_schema import (
     OpenRouterBalanceResponse
 )
 
-router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
+router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 @router.get("/", response_model=SettingsResponse)

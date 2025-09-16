@@ -67,7 +67,7 @@ async def login(
         value=access_token,
         httponly=True,
         secure=settings.ENVIRONMENT == "production",
-        samesite="strict",
+        samesite="lax" if settings.ENVIRONMENT == "development" else "strict",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     
@@ -94,7 +94,7 @@ async def logout(
         key="access_token",
         httponly=True,
         secure=settings.ENVIRONMENT == "production",
-        samesite="strict"
+        samesite="lax" if settings.ENVIRONMENT == "development" else "strict"
     )
     
     if current_user:

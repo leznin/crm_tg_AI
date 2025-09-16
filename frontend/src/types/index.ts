@@ -110,3 +110,63 @@ export interface TransferRecord {
   status: 'new' | 'in_progress' | 'completed' | 'cancelled';
   notes?: string;              // Короткие заметки (опционально)
 }
+
+// Business Accounts для интеграции с Telegram Business
+export interface BusinessAccount {
+  id: number;
+  business_connection_id: string;
+  user_id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  is_enabled: boolean;
+  can_reply: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BusinessChat {
+  id: number;
+  chat_id: number;
+  business_account_id: number;
+  chat_type: 'private' | 'group' | 'supergroup' | 'channel';
+  title?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  unread_count: number;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+  last_message_at?: string;
+  last_message?: BusinessMessage;
+}
+
+export interface BusinessMessage {
+  id: number;
+  message_id: number;
+  chat_id: number;
+  sender_id: number;
+  sender_first_name?: string;
+  sender_last_name?: string;
+  sender_username?: string;
+  text?: string;
+  message_type: 'text' | 'photo' | 'document' | 'voice' | 'video';
+  file_id?: string;
+  file_unique_id?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  is_outgoing: boolean;
+  created_at: string;
+  telegram_date: string;
+}
+
+export interface BusinessAccountStats {
+  chats_count: number;
+  messages_count: number;
+  unread_chats_count: number;
+  account_name: string;
+  username?: string;
+  is_enabled: boolean;
+}

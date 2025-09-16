@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from app.api.v1.user_router import router as user_router
 from app.api.v1.auth_router import router as auth_router
 from app.api.v1.settings_router import router as settings_router
+from app.api.v1.business_account_router import router as business_account_router
+from app.api.v1.telegram_webhook_router import router as telegram_webhook_router, webhook_router
+from app.api.v1.file_upload_router import router as file_upload_router
 from app.middleware.security import SecurityMiddleware, rate_limit_handler
 from app.db.session import engine, SessionLocal
 from app.db.base import Base
@@ -64,22 +67,26 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
-# Add security middleware
-app.add_middleware(SecurityMiddleware)
-
-# Add CORS middleware
+# Add CORS middleware first (before security middleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"] if settings.ENVIRONMENT == "development" else [],
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Always allow in dev
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Add OPTIONS for preflight
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth_router)
-app.include_router(user_router)
-app.include_router(settings_router)
+# Add security middleware
+app.add_middleware(SecurityMiddleware)
+
+# Include routers with API prefix
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(user_router, prefix="/api/v1")
+app.include_router(settings_router, prefix="/api/v1")
+app.include_router(business_account_router, prefix="/api/v1")
+app.include_router(telegram_webhook_router, prefix="/api/v1")
+app.include_router(file_upload_router, prefix="/api/v1")
+app.include_router(webhook_router)  # Direct webhook without /api/v1 prefix
 
 @app.on_event("startup")
 async def startup_event():

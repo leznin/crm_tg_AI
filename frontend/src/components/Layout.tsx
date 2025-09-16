@@ -4,6 +4,8 @@ import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ChatList from './ChatList';
 import ChatWindow from './ChatWindow';
+import BusinessChatList from './BusinessChatList';
+import BusinessChatWindow from './BusinessChatWindow';
 import AccountsManager from './AccountsManager';
 import Analytics from './Analytics';
 import Settings from './Settings';
@@ -16,7 +18,7 @@ const Layout: React.FC = () => {
   const renderMainContent = () => {
     switch (currentView) {
       case 'chats':
-        return <ChatWindow />;
+        return <BusinessChatWindow />;
       case 'accounts':
         return <AccountsManager />;
       case 'analytics':
@@ -28,7 +30,7 @@ const Layout: React.FC = () => {
       case 'botchats':
         return <BotChatsAdmin />;
       default:
-        return <ChatWindow />;
+        return <BusinessChatWindow />;
     }
   };
 
@@ -58,7 +60,7 @@ const Layout: React.FC = () => {
       {/* Chat List - only visible in chats view */}
       {currentView === 'chats' && (
   <div className={`transition-all duration-300 ${sidebarCollapsed ? 'w-80' : 'w-80'} bg-surface-50/80 backdrop-blur-md border-r border-white/5 flex-shrink-0 hidden lg:block shadow-elevated-sm` }>
-          <ChatList />
+          <BusinessChatList />
         </div>
       )}
       
