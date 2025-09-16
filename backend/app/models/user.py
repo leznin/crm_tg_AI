@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -12,6 +12,9 @@ class User(Base):
     full_name = Column(String(100), nullable=True)
     hashed_password = Column(String(255), nullable=False)  # Increased length for bcrypt
     is_active = Column(Boolean, default=True, nullable=False)
+
+    # Telegram integration
+    telegram_user_id = Column(BigInteger, unique=True, index=True, nullable=True)
     
     # Security fields
     failed_login_attempts = Column(Integer, default=0, nullable=False)

@@ -50,9 +50,9 @@ class BusinessAccountService:
                 raise ValueError(f"Failed to call Telegram API: {str(e)}")
 
     # Business Account management
-    def get_all_business_accounts(self, user_id: int) -> List[BusinessAccount]:
-        """Get all business accounts for user"""
-        return self.repository.get_all_business_accounts()
+    def get_all_business_accounts(self, app_user_id: int) -> List[BusinessAccount]:
+        """Get all business accounts for user - either their own or all active ones"""
+        return self.repository.get_all_business_accounts(app_user_id)
 
     def get_business_account_by_connection_id(self, connection_id: str) -> Optional[BusinessAccount]:
         """Get business account by connection ID"""
