@@ -11,6 +11,7 @@ from app.api.v1.settings_router import router as settings_router
 from app.api.v1.business_account_router import router as business_account_router
 from app.api.v1.telegram_webhook_router import router as telegram_webhook_router, webhook_router
 from app.api.v1.file_upload_router import router as file_upload_router
+from app.api.v1.contact_router import router as contact_router
 from app.middleware.security import SecurityMiddleware, rate_limit_handler
 from app.db.session import engine, SessionLocal
 from app.db.base import Base
@@ -84,6 +85,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(user_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(business_account_router, prefix="/api/v1")
+app.include_router(contact_router, prefix="/api/v1")
 app.include_router(telegram_webhook_router, prefix="/api/v1")
 app.include_router(file_upload_router, prefix="/api/v1")
 app.include_router(webhook_router)  # Direct webhook without /api/v1 prefix

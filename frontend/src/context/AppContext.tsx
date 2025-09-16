@@ -27,13 +27,15 @@ interface AppContextType {
   messages: Message[];
   sendMessage: (chatId: number, text: string) => void;
   
-  // Accounts
+  // Accounts (Contacts)
   accounts: Account[];
-  addAccount: (account: Omit<Account, 'id'>) => void;
+  addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
   createAccountFromChat: (chat: Chat, senderId: number) => void;
-  updateAccount: (id: number, updates: Partial<Account>) => void;
+  updateAccount: (id: number, updates: Partial<Account>) => Promise<void>;
   deleteAccount: (id: number) => void;
   getAccountByUserId: (userId: number) => Account | undefined;
+  loadContacts: () => Promise<void>;
+  isLoadingContacts: boolean;
   
   // Chat summaries
   chatSummaries: ChatSummary[];
@@ -148,6 +150,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Business Messages state
   const [businessMessages, setBusinessMessages] = useState<BusinessMessage[]>([]);
   const [isLoadingBusinessMessages, setIsLoadingBusinessMessages] = useState(false);
+
+  // Contacts loading state
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   // --- Migration & Initial Load ---
@@ -184,10 +189,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    const savedAccountsRaw = localStorage.getItem('telegram_crm_accounts');
-    if (savedAccountsRaw) {
-      try { setAccounts(JSON.parse(savedAccountsRaw)); } catch {}
-    }
+    // Load contacts from API
+    loadContacts();
+
+    // Load business accounts from API
+    loadBusinessAccounts();
 
     const savedTransfers = localStorage.getItem('telegram_crm_transfers');
     if (savedTransfers) setTransferRecords(JSON.parse(savedTransfers));
@@ -571,33 +577,194 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return accounts.find(account => account.user_id === userId);
   }, [accounts]);
 
-  const addAccount = useCallback((account: Omit<Account, 'id'>) => {
-    setAccounts(prev => {
-    const newAccount: Account = { ...account, id: Date.now(), manager_id: account.manager_id ?? activeManager?.id ?? managers[0]?.id };
-      const newAccounts = [...prev, newAccount];
-      localStorage.setItem('telegram_crm_accounts', JSON.stringify(newAccounts));
-      return newAccounts;
-    });
-  }, [activeManager, managers]);
-
-  const updateAccount = useCallback((id: number, updates: Partial<Account>) => {
-    setAccounts(prev => {
-      const newAccounts = prev.map(account => {
-        if (account.id !== id) return account;
-        // Track username changes
-        let username_history = account.username_history || [];
-        if (updates.username && updates.username !== account.username) {
-          username_history = [
-            { username: account.username || '(empty)', changed_at: new Date().toISOString() },
-            ...username_history
-          ].slice(0, 20); // keep last 20
-        }
-  return { ...account, ...updates, username_history };
+  // Load business accounts from API
+  const loadBusinessAccounts = useCallback(async () => {
+    setIsLoadingBusinessAccounts(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/`, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      localStorage.setItem('telegram_crm_accounts', JSON.stringify(newAccounts));
-      return newAccounts;
-    });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBusinessAccounts(data.accounts || []);
+      } else if (response.status === 401) {
+        console.warn('Authentication expired or invalid - redirecting to login');
+        // Clear authentication state
+        localStorage.removeItem('telegram_crm_logged_in');
+        localStorage.removeItem('telegram_crm_login_meta');
+        window.location.href = '/login';
+      } else {
+        console.error('Failed to load business accounts');
+      }
+    } catch (error) {
+      console.error('Error loading business accounts:', error);
+    } finally {
+      setIsLoadingBusinessAccounts(false);
+    }
   }, []);
+
+  // Load contacts from API
+  const loadContacts = useCallback(async () => {
+    setIsLoadingContacts(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/contacts/`, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Transform API contacts to frontend Account format
+        const transformedAccounts = data.contacts.map((item: any) => ({
+          id: item.contact.id,
+          user_id: item.contact.telegram_user_id,
+          first_name: item.contact.first_name,
+          last_name: item.contact.last_name,
+          username: item.contact.username,
+          rating: item.contact.rating,
+          category: item.contact.category,
+          source: item.contact.source,
+          tags: item.contact.tags || [],
+          notes: item.contact.notes || '',
+          created_at: item.contact.created_at,
+          last_contact: item.contact.last_contact,
+          total_messages: item.contact.total_messages,
+          chat_type: item.contact.source === 'private' ? 'private' : 'group',
+          registration_date: item.contact.registration_date,
+          brand_name: item.contact.brand_name,
+          position: item.contact.position,
+          years_in_market: item.contact.years_in_market,
+          manager_id: item.interaction.business_account_id, // Map business account to manager_id for compatibility
+          username_history: item.contact.username_history
+        }));
+        setAccounts(transformedAccounts);
+      }
+    } catch (error) {
+      console.error('Error loading contacts:', error);
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  }, []);
+
+  const addAccount = useCallback(async (account: Omit<Account, 'id'>) => {
+    try {
+      // Check if contact already exists by telegram user_id
+      const existingContact = await fetch(`${API_BASE_URL}/api/v1/contacts/telegram/${account.user_id}`, {
+        credentials: 'include',
+      });
+
+      if (existingContact.ok) {
+        // Contact already exists, update it instead
+        const existing = await existingContact.json();
+        await updateAccount(existing.id, account);
+        return;
+      }
+
+      // Create new contact
+      const contactData = {
+        telegram_user_id: account.user_id,
+        first_name: account.first_name,
+        last_name: account.last_name,
+        username: account.username,
+        rating: account.rating,
+        category: account.category,
+        source: account.source,
+        tags: account.tags,
+        notes: account.notes,
+        registration_date: account.registration_date,
+        brand_name: account.brand_name,
+        position: account.position,
+        years_in_market: account.years_in_market
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/contacts/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(contactData),
+      });
+
+      if (response.ok) {
+        const newContact = await response.json();
+        
+        // Create business interaction if manager_id (business_account_id) is provided
+        if (account.manager_id) {
+          await fetch(`${API_BASE_URL}/api/v1/contacts/interactions/`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contact_id: newContact.id,
+              business_account_id: account.manager_id,
+              messages_count: account.total_messages || 0,
+              first_interaction: new Date().toISOString(),
+              last_interaction: new Date().toISOString()
+            }),
+          });
+        }
+
+        // Reload contacts to get updated data
+        await loadContacts();
+      } else {
+        const errorData = await response.json();
+        console.error('Error creating contact:', errorData);
+        throw new Error(errorData.detail || 'Failed to create contact');
+      }
+    } catch (error) {
+      console.error('Error adding account:', error);
+      throw error;
+    }
+  }, [loadContacts]);
+
+  const updateAccount = useCallback(async (id: number, updates: Partial<Account>) => {
+    try {
+      const updateData = {
+        first_name: updates.first_name,
+        last_name: updates.last_name,
+        username: updates.username,
+        rating: updates.rating,
+        category: updates.category,
+        source: updates.source,
+        tags: updates.tags,
+        notes: updates.notes,
+        registration_date: updates.registration_date,
+        brand_name: updates.brand_name,
+        position: updates.position,
+        years_in_market: updates.years_in_market
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/contacts/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (response.ok) {
+        // Reload contacts to get updated data
+        await loadContacts();
+      } else {
+        const errorData = await response.json();
+        console.error('Error updating contact:', errorData);
+        throw new Error(errorData.detail || 'Failed to update contact');
+      }
+    } catch (error) {
+      console.error('Error updating account:', error);
+      throw error;
+    }
+  }, [loadContacts]);
 
   const deleteAccount = useCallback((id: number) => {
     setAccounts(prev => {
@@ -648,6 +815,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     ]
   };
 
+
   const value: AppContextType = {
     apiConfig,
     updateApiConfig,
@@ -674,6 +842,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     getAccountByUserId,
     updateAccount,
     deleteAccount,
+    loadContacts,
+    isLoadingContacts,
     chatSummaries,
     getChatSummary,
   analyticsData,
@@ -753,39 +923,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     activeBusinessAccount,
     setActiveBusinessAccount,
     isLoadingBusinessAccounts,
-    loadBusinessAccounts: useCallback(async () => {
-      setIsLoadingBusinessAccounts(true);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/`, {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setBusinessAccounts(data.accounts || []);
-        } else if (response.status === 401) {
-          console.warn('Authentication expired or invalid - redirecting to login');
-          // Clear authentication state
-          localStorage.removeItem('telegram_crm_logged_in');
-          // Small delay to let user see the warning
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
-          setBusinessAccounts([]);
-        } else {
-          console.error(`Failed to load business accounts: ${response.status} ${response.statusText}`);
-          setBusinessAccounts([]);
-        }
-      } catch (error) {
-        console.error('Error loading business accounts:', error);
-        setBusinessAccounts([]);
-      } finally {
-        setIsLoadingBusinessAccounts(false);
-      }
-    }, []),
+    loadBusinessAccounts,
 
     // Business Chats
     businessChats,
@@ -847,6 +985,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, []),
 
     sendBusinessMessage: useCallback(async (connectionId: string, chatId: number, text: string) => {
+
       setIsSendingMessage(true);
       try {
         const response = await fetch(`${API_BASE_URL}/api/v1/business-accounts/send-message`, {
@@ -864,7 +1003,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (response.ok) {
           // Reload messages after sending
-          if (activeBusinessChat) {
+          if (activeBusinessChat && activeBusinessChat.chat_id === chatId) {
             const reloadResponse = await fetch(`${API_BASE_URL}/api/v1/business-accounts/chats/${activeBusinessChat.id}/messages?limit=50&offset=0`, {
               credentials: 'include',
               headers: {
@@ -877,8 +1016,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
           }
         } else {
-          console.error('Failed to send business message');
-          throw new Error('Failed to send message');
+          // Handle different error types
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.detail || 'Failed to send message';
+          
+          if (response.status === 400 && errorMessage.includes('does not have reply permissions')) {
+            // Business account cannot reply - show specific notification
+            throw new Error('BUSINESS_CANNOT_REPLY');
+          } else if (response.status === 400 && errorMessage.includes('BUSINESS_PEER_INVALID')) {
+            // Business peer invalid - connection not initialized
+            throw new Error('BUSINESS_PEER_INVALID');
+          } else {
+            // Generic error
+            throw new Error(errorMessage);
+          }
         }
       } catch (error) {
         console.error('Error sending business message:', error);

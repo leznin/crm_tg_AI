@@ -130,8 +130,24 @@ const ChatWindow: React.FC = () => {
 			isOpen={accountModalOpen}
 			onClose={() => setAccountModalOpen(false)}
 			editingAccount={existingAccount || undefined}
-			onCreate={(data) => { addAccount({ ...data, manager_id: data.manager_id }); setAccountModalOpen(false); }}
-			onUpdate={(id, updates) => { updateAccount(id, updates); setAccountModalOpen(false); }}
+			onCreate={async (data) => { 
+				try {
+					await addAccount({ ...data, manager_id: data.manager_id }); 
+					setAccountModalOpen(false); 
+				} catch (error) {
+					console.error('Error creating account:', error);
+					alert('Ошибка при создании контакта. Проверьте консоль для деталей.');
+				}
+			}}
+			onUpdate={async (id, updates) => { 
+				try {
+					await updateAccount(id, updates); 
+					setAccountModalOpen(false); 
+				} catch (error) {
+					console.error('Error updating account:', error);
+					alert('Ошибка при обновлении контакта. Проверьте консоль для деталей.');
+				}
+			}}
 			initialChat={!existingAccount ? activeChat || undefined : undefined}
 		/>
 		</>

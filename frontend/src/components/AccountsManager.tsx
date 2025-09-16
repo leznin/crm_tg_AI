@@ -308,8 +308,22 @@ const AccountsManager: React.FC = () => {
         isOpen={isModalOpen}
         onClose={resetForm}
         editingAccount={editingAccount}
-        onCreate={addAccount}
-        onUpdate={updateAccount}
+        onCreate={async (data) => {
+          try {
+            await addAccount(data);
+          } catch (error) {
+            console.error('Error creating account:', error);
+            alert('Ошибка при создании контакта. Проверьте консоль для деталей.');
+          }
+        }}
+        onUpdate={async (id, updates) => {
+          try {
+            await updateAccount(id, updates);
+          } catch (error) {
+            console.error('Error updating account:', error);
+            alert('Ошибка при обновлении контакта. Проверьте консоль для деталей.');
+          }
+        }}
       />
     </div>
   );

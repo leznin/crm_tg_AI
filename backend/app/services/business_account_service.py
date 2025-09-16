@@ -23,7 +23,7 @@ class BusinessAccountService:
 
     async def get_telegram_bot_token(self, user_id: int) -> Optional[str]:
         """Get Telegram bot token for user"""
-        return await self.settings_service.get_api_key(user_id, "telegram_bot")
+        return self.settings_service.get_api_key(user_id, "telegram_bot", decrypt=True)
 
     async def send_telegram_request(self, user_id: int, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Send request to Telegram Bot API"""
@@ -245,35 +245,52 @@ class BusinessAccountService:
         reply_to_message_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """Send text message through Telegram Bot API"""
+        # Validate that business account exists and is enabled
+        business_account = self.repository.get_business_account_by_connection_id(business_connection_id)
+        if not business_account:
+            logger.error(f"Business account not found for connection_id: {business_connection_id}")
+            raise ValueError(f"Business account not found for connection_id: {business_connection_id}")
+
+        if not business_account.is_enabled:
+            logger.error(f"Business account {business_account.first_name} is disabled")
+            raise ValueError(f"Business account {business_account.first_name} is disabled. Please enable it first.")
+
+        if not business_account.can_reply:
+            logger.error(f"Business account {business_account.first_name} cannot reply")
+            raise ValueError(f"Business account {business_account.first_name} does not have reply permissions. This usually means the business connection needs to be initialized by sending the first message manually through Telegram Business app.")
+
+        # Validate that chat belongs to this business account
+        chat = self.repository.get_chat_by_telegram_id(chat_id, business_account.id)
+        if not chat:
+            logger.error(f"Chat {chat_id} not found for business account {business_account.id}")
+            raise ValueError(f"Chat {chat_id} does not belong to business account {business_account.first_name}. Please initiate conversation manually through Telegram Business first.")
+
         params = {
             'business_connection_id': business_connection_id,
             'chat_id': chat_id,
             'text': text,
         }
-        
+
         if reply_to_message_id:
             params['reply_to_message_id'] = reply_to_message_id
 
         result = await self.send_telegram_request(user_id, 'sendMessage', params)
-        
+
         # Save outgoing message to database
         if result:
-            business_account = self.repository.get_business_account_by_connection_id(business_connection_id)
-            if business_account:
-                chat = self.repository.get_chat_by_telegram_id(chat_id, business_account.id)
-                if chat:
-                    message = self.repository.create_business_message(
-                        message_id=result.get('message_id'),
-                        chat_id=chat.id,
-                        sender_id=business_account.user_id,
-                        sender_first_name=business_account.first_name,
-                        sender_last_name=business_account.last_name,
-                        sender_username=business_account.username,
-                        text=text,
-                        message_type='text',
-                        is_outgoing=True,
-                        telegram_date=datetime.fromtimestamp(result.get('date', 0))
-                    )
+            message = self.repository.create_business_message(
+                message_id=result.get('message_id'),
+                chat_id=chat.id,
+                sender_id=business_account.user_id,
+                sender_first_name=business_account.first_name,
+                sender_last_name=business_account.last_name,
+                sender_username=business_account.username,
+                text=text,
+                message_type='text',
+                is_outgoing=True,
+                telegram_date=datetime.fromtimestamp(result.get('date', 0))
+            )
+            logger.info(f"Message saved to database with ID: {message.id}")
 
         return result
 

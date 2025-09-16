@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Send, ArrowLeft, Info, User, Paperclip, Image, FileText } from 'lucide-react';
+import { Send, ArrowLeft, Info, User, Paperclip, Image, FileText, AlertTriangle, AlertCircle } from 'lucide-react';
 import AccountModal from './AccountModal';
 import { BusinessMessage } from '../types';
 
@@ -35,6 +35,11 @@ const BusinessChatWindow: React.FC = () => {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [notification, setNotification] = useState<{
+    type: 'error' | 'warning' | 'info';
+    message: string;
+    details?: string;
+  } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -102,7 +107,33 @@ const BusinessChatWindow: React.FC = () => {
       setMessageText('');
     } catch (error) {
       console.error('Failed to send message:', error);
-      // You might want to show an error toast here
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      if (errorMessage === 'BUSINESS_CANNOT_REPLY') {
+        setNotification({
+          type: 'warning',
+          message: 'Бизнес-аккаунт не может отправлять сообщения',
+          details: 'Проверьте права бота в настройках Telegram Business. Необходимо инициировать диалог через Telegram Business. Отправьте первое сообщение вручную и дождитесь ответа пользователя.'
+        });
+      } else if (errorMessage === 'BUSINESS_PEER_INVALID') {
+        setNotification({
+          type: 'error',
+          message: 'Соединение не инициировано',
+          details: 'Откройте Telegram Business, найдите этого пользователя и отправьте первое сообщение вручную.'
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          message: 'Ошибка отправки сообщения',
+          details: errorMessage
+        });
+      }
+      
+      // Auto-hide notification after 8 seconds
+      setTimeout(() => {
+        setNotification(null);
+      }, 8000);
     }
   };
 
@@ -273,6 +304,43 @@ const BusinessChatWindow: React.FC = () => {
           </div>
         </div>
 
+        {/* Notification */}
+        {notification && (
+          <div className={`mx-4 mt-3 p-4 rounded-lg border-l-4 ${
+            notification.type === 'error' 
+              ? 'bg-red-900/20 border-red-500 text-red-100' 
+              : notification.type === 'warning'
+              ? 'bg-yellow-900/20 border-yellow-500 text-yellow-100'
+              : 'bg-blue-900/20 border-blue-500 text-blue-100'
+          }`}>
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 mt-0.5">
+                {notification.type === 'error' ? (
+                  <AlertTriangle className="w-5 h-5" />
+                ) : notification.type === 'warning' ? (
+                  <AlertCircle className="w-5 h-5" />
+                ) : (
+                  <Info className="w-5 h-5" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="font-medium text-sm">{notification.message}</div>
+                {notification.details && (
+                  <div className="mt-1 text-xs opacity-90">{notification.details}</div>
+                )}
+              </div>
+              <button
+                onClick={() => setNotification(null)}
+                className="flex-shrink-0 text-current opacity-60 hover:opacity-100 transition-opacity"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4">
           {isLoadingBusinessMessages ? (
@@ -361,8 +429,24 @@ const BusinessChatWindow: React.FC = () => {
         isOpen={accountModalOpen}
         onClose={() => setAccountModalOpen(false)}
         editingAccount={existingAccount || undefined}
-        onCreate={(data) => { addAccount({ ...data, manager_id: data.manager_id }); setAccountModalOpen(false); }}
-        onUpdate={(id, updates) => { updateAccount(id, updates); setAccountModalOpen(false); }}
+        onCreate={async (data) => { 
+          try {
+            await addAccount({ ...data, manager_id: data.manager_id }); 
+            setAccountModalOpen(false); 
+          } catch (error) {
+            console.error('Error creating account:', error);
+            alert('Ошибка при создании контакта. Проверьте консоль для деталей.');
+          }
+        }}
+        onUpdate={async (id, updates) => { 
+          try {
+            await updateAccount(id, updates); 
+            setAccountModalOpen(false); 
+          } catch (error) {
+            console.error('Error updating account:', error);
+            alert('Ошибка при обновлении контакта. Проверьте консоль для деталей.');
+          }
+        }}
         initialChat={!existingAccount ? {
           id: activeBusinessChat.chat_id,
           type: activeBusinessChat.chat_type as any,

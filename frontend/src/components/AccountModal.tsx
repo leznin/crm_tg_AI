@@ -7,8 +7,8 @@ interface AccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   editingAccount?: Account | null;
-  onCreate: (accountData: Omit<Account, 'id'>) => void;
-  onUpdate: (id: number, updates: Omit<Account, 'id'>) => void;
+  onCreate: (accountData: Omit<Account, 'id'>) => Promise<void>;
+  onUpdate: (id: number, updates: Omit<Account, 'id'>) => Promise<void>;
   initialChat?: Chat; // Used when opened from a chat to prefill
 }
 
@@ -25,7 +25,7 @@ interface FormData {
   brand_name: string;
   position: string;
   years_in_market: string; // keep as string for controlled input, convert to number
-  manager_id?: number;
+  business_account_id?: number;
 }
 
 const defaultForm: FormData = {
@@ -52,8 +52,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
   onUpdate,
   initialChat
 }) => {
-  const { activeManager } = useAppContext();
-  const { managers } = useAppContext();
+  const { businessAccounts, activeBusinessAccount } = useAppContext();
   const [formData, setFormData] = useState<FormData>(defaultForm);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -78,7 +77,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
   brand_name: editingAccount.brand_name || '',
   position: editingAccount.position || '',
   years_in_market: editingAccount.years_in_market?.toString() || '',
-  manager_id: editingAccount.manager_id || activeManager?.id
+  business_account_id: editingAccount.manager_id || activeBusinessAccount?.id
       });
       setTags(editingAccount.tags);
     } else if (initialChat) {
@@ -95,7 +94,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
   brand_name: '',
   position: '',
   years_in_market: '',
-  manager_id: activeManager?.id
+  business_account_id: activeBusinessAccount?.id
       });
       setTags([]);
     } else {
@@ -122,7 +121,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
 
   const removeTag = (t: string) => setTags(prev => prev.filter(x => x !== t));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Определяем финальное имя: при отсутствии берём username или 'Без имени'
     const resolvedFirstName = (formData.first_name || formData.username || 'Без имени').trim();
@@ -144,14 +143,20 @@ const AccountModal: React.FC<AccountModalProps> = ({
   brand_name: formData.brand_name.trim() || editingAccount?.brand_name,
   position: formData.position.trim() || editingAccount?.position,
   years_in_market: formData.years_in_market ? Number(formData.years_in_market) : editingAccount?.years_in_market
-  ,manager_id: formData.manager_id || activeManager?.id
+  ,manager_id: formData.business_account_id || activeBusinessAccount?.id
     };
-    if (editingAccount) {
-      onUpdate(editingAccount.id, base);
-    } else {
-      onCreate(base);
+    
+    try {
+      if (editingAccount) {
+        await onUpdate(editingAccount.id, base);
+      } else {
+        await onCreate(base);
+      }
+      onClose();
+    } catch (error) {
+      console.error('Error saving account:', error);
+      // Не закрываем модал при ошибке, чтобы пользователь мог попробовать снова
     }
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -179,24 +184,26 @@ const AccountModal: React.FC<AccountModalProps> = ({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Manager Selection */}
+          {/* Business Account Selection */}
           <div>
-            <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1">Ответственный менеджер</label>
+            <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1">Бизнес-аккаунт (на который написал пользователь)</label>
             <select
-              value={formData.manager_id || ''}
-              onChange={e => setFormData({ ...formData, manager_id: e.target.value ? Number(e.target.value) : undefined })}
+              value={formData.business_account_id || ''}
+              onChange={e => setFormData({ ...formData, business_account_id: e.target.value ? Number(e.target.value) : undefined })}
               className="w-full h-11 pl-3 pr-8 rounded-xl border border-white/10 bg-surface-100/60 focus:bg-surface-100/80 text-sm focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/60 appearance-none"
             >
               <option value="">— Не выбран —</option>
-              {managers.map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+              {businessAccounts.map(ba => (
+                <option key={ba.id} value={ba.id}>
+                  {ba.first_name} {ba.last_name} {ba.username ? `(@${ba.username})` : ''}
+                </option>
               ))}
             </select>
-            {editingAccount?.manager_id && !formData.manager_id && (
-              <p className="mt-1 text-[10px] text-amber-400">У аккаунта был менеджер, подтвердите или выберите нового.</p>
+            {editingAccount?.manager_id && !formData.business_account_id && (
+              <p className="mt-1 text-[10px] text-amber-400">У контакта был привязан бизнес-аккаунт, подтвердите или выберите новый.</p>
             )}
-            {!managers.length && (
-              <p className="mt-1 text-[10px] text-red-400">Нет менеджеров — сначала создайте менеджера.</p>
+            {!businessAccounts.length && (
+              <p className="mt-1 text-[10px] text-red-400">Нет бизнес-аккаунтов — сначала настройте Telegram Business.</p>
             )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
