@@ -144,7 +144,7 @@ class BusinessAccountService:
 
     def save_incoming_message(
         self,
-        business_account_id: int,
+        business_account: BusinessAccount,
         message_data: Dict[str, Any]
     ) -> BusinessMessage:
         """Save incoming message from Telegram webhook"""
@@ -155,7 +155,7 @@ class BusinessAccountService:
         
         # Create or update chat
         chat = self.create_or_update_chat(
-            business_account_id=business_account_id,
+            business_account_id=business_account.id,
             chat_id=chat_id,
             chat_type=chat_type,
             title=chat_data.get('title'),
@@ -212,11 +212,15 @@ class BusinessAccountService:
             mime_type = video.get('mime_type')
             text = message_data.get('caption', '')
 
+        # Determine if message is outgoing (from business account) or incoming
+        sender_id = from_user.get('id')
+        is_outgoing = sender_id == business_account.user_id
+
         # Create message
         message = self.repository.create_business_message(
             message_id=message_id,
             chat_id=chat.id,
-            sender_id=from_user.get('id'),
+            sender_id=sender_id,
             sender_first_name=from_user.get('first_name'),
             sender_last_name=from_user.get('last_name'),
             sender_username=from_user.get('username'),
@@ -227,7 +231,7 @@ class BusinessAccountService:
             file_name=file_name,
             file_size=file_size,
             mime_type=mime_type,
-            is_outgoing=False,
+            is_outgoing=is_outgoing,
             telegram_date=date
         )
 

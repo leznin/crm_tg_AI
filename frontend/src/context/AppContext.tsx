@@ -99,6 +99,7 @@ interface AppContextType {
   sendBusinessDocument: (connectionId: string, chatId: number, fileId: string, caption?: string) => Promise<void>;
   uploadFile: (file: File) => Promise<{file_id: string; message_type: string}>;
   isLoadingBusinessMessages: boolean;
+  hasMoreBusinessMessages: boolean;
   isSendingMessage: boolean;
 }
 
@@ -150,6 +151,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Business Messages state
   const [businessMessages, setBusinessMessages] = useState<BusinessMessage[]>([]);
   const [isLoadingBusinessMessages, setIsLoadingBusinessMessages] = useState(false);
+  const [hasMoreBusinessMessages, setHasMoreBusinessMessages] = useState(true);
 
   // Contacts loading state
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
@@ -956,6 +958,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Business Messages
     businessMessages,
     isLoadingBusinessMessages,
+    hasMoreBusinessMessages,
     isSendingMessage,
     loadBusinessMessages: useCallback(async (chatId: number, limit = 50, offset = 0) => {
       setIsLoadingBusinessMessages(true);
@@ -971,8 +974,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const data = await response.json();
           if (offset === 0) {
             setBusinessMessages(data.messages || []);
+            setHasMoreBusinessMessages(data.has_more || false);
           } else {
             setBusinessMessages(prev => [...prev, ...(data.messages || [])]);
+            setHasMoreBusinessMessages(data.has_more || false);
           }
         } else {
           console.error('Failed to load business messages');

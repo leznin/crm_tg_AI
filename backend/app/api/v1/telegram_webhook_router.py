@@ -97,7 +97,7 @@ async def handle_business_message(service: BusinessAccountService, contact_servi
         return
     
     # Save message
-    message = service.save_incoming_message(business_account.id, message_data)
+    message = service.save_incoming_message(business_account, message_data)
     logger.info(f"Saved business message {message.id} from chat {message_data.get('chat', {}).get('id')}")
     
     # Process contact from message data
@@ -135,7 +135,7 @@ async def handle_edited_business_message(service: BusinessAccountService, contac
     
     # For now, we'll treat edited messages as new messages
     # In a more sophisticated implementation, you might want to update the existing message
-    message = service.save_incoming_message(business_account.id, message_data)
+    message = service.save_incoming_message(business_account, message_data)
     logger.info(f"Saved edited business message {message.id}")
     
     # Process contact from edited message data (same as regular message)

@@ -6,6 +6,8 @@ import AccountModal from './AccountModal';
 import BusinessChatSummaryPanel from './BusinessChatSummaryPanel';
 import { BusinessMessage } from '../types';
 
+const API_BASE_URL = 'http://localhost:8000';
+
 const BusinessChatWindow: React.FC = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const {
@@ -26,6 +28,7 @@ const BusinessChatWindow: React.FC = () => {
     isLoadingBusinessAccounts,
     isLoadingBusinessChats,
     isLoadingBusinessMessages,
+    hasMoreBusinessMessages,
     isSendingMessage,
     setSidebarOpen,
     accounts,
@@ -43,6 +46,9 @@ const BusinessChatWindow: React.FC = () => {
   } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Load business accounts on component mount (only if authenticated and not loading)
   useEffect(() => {
@@ -63,7 +69,8 @@ const BusinessChatWindow: React.FC = () => {
   // Load messages when business chat changes
   useEffect(() => {
     if (activeBusinessChat) {
-      loadBusinessMessages(activeBusinessChat.id);
+      setIsInitialLoad(true);
+      loadBusinessMessages(activeBusinessChat.id, 50, 0);
     }
   }, [activeBusinessChat, loadBusinessMessages]);
 
@@ -73,6 +80,40 @@ const BusinessChatWindow: React.FC = () => {
       inputRef.current.focus();
     }
   }, [activeBusinessChat]);
+
+  // Auto-scroll to bottom when messages are loaded initially or after sending
+  useEffect(() => {
+    if ((isInitialLoad || businessMessages.length > 0) && messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+        setIsInitialLoad(false);
+      }, 100);
+    }
+  }, [businessMessages, isInitialLoad]);
+
+  // Load more messages when scrolling to top
+  const loadMoreMessages = async () => {
+    if (!activeBusinessChat || !hasMoreBusinessMessages || isLoadingMore) return;
+
+    setIsLoadingMore(true);
+    try {
+      await loadBusinessMessages(activeBusinessChat.id, 50, businessMessages.length);
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Handle scroll to load more messages
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.scrollTop === 0 && hasMoreBusinessMessages && !isLoadingMore && !isLoadingBusinessMessages) {
+      loadMoreMessages();
+    }
+  };
 
   const handleSend = async () => {
     if (!activeBusinessAccount || !activeBusinessChat || (!messageText.trim() && !selectedFile)) return;
@@ -344,7 +385,17 @@ const BusinessChatWindow: React.FC = () => {
 
         {/* Messages and Summary Panel */}
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4">
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto p-4"
+            onScroll={handleScroll}
+          >
+            {isLoadingMore && (
+              <div className="flex justify-center items-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                <span className="ml-2 text-sm text-gray-400">Загрузка сообщений...</span>
+              </div>
+            )}
             {isLoadingBusinessMessages ? (
               <div className="flex justify-center items-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
