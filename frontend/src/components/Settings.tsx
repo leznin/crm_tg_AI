@@ -175,6 +175,15 @@ const Settings: React.FC = () => {
     openrouter_api_key: apiConfig.openrouter_api_key || ''
   });
 
+  // Track which fields have been modified by the user
+  const [changedFields, setChangedFields] = useState<{
+    telegram_bot_token: boolean;
+    openrouter_api_key: boolean;
+  }>({
+    telegram_bot_token: false,
+    openrouter_api_key: false
+  });
+
   const tabs = [
     { id: 'api' as const, label: 'API ключи', icon: Key },
     { id: 'models' as const, label: 'AI Модели', icon: Brain },
@@ -189,6 +198,11 @@ const Settings: React.FC = () => {
     setFormData({
       telegram_bot_token: apiConfig.telegram_bot_token || '',
       openrouter_api_key: apiConfig.openrouter_api_key || ''
+    });
+    // Reset changed fields when apiConfig changes (e.g., after successful save)
+    setChangedFields({
+      telegram_bot_token: false,
+      openrouter_api_key: false
     });
   }, [apiConfig]);
 
@@ -389,9 +403,39 @@ const Settings: React.FC = () => {
     }));
   };
 
+  // Handle input changes and mark fields as changed
+  const handleInputChange = (fieldName: 'telegram_bot_token' | 'openrouter_api_key', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [fieldName]: value
+    }));
+    setChangedFields(prev => ({
+      ...prev,
+      [fieldName]: true
+    }));
+  };
+
   const handleSaveApiConfig = async () => {
     try {
-      await updateApiConfig(formData);
+      // Only send fields that have been changed by the user
+      const configToSave: Partial<typeof formData> = {};
+
+      if (changedFields.telegram_bot_token) {
+        configToSave.telegram_bot_token = formData.telegram_bot_token;
+      }
+
+      if (changedFields.openrouter_api_key) {
+        configToSave.openrouter_api_key = formData.openrouter_api_key;
+      }
+
+      // Only save if at least one field has been changed
+      if (Object.keys(configToSave).length === 0) {
+        setConnectionStatus('success');
+        setTimeout(() => setConnectionStatus(null), 3000);
+        return;
+      }
+
+      await updateApiConfig(configToSave);
       setConnectionStatus('success');
       setTimeout(() => setConnectionStatus(null), 3000);
     } catch (error) {
@@ -428,7 +472,7 @@ const Settings: React.FC = () => {
               <input
                 type={showKeys.telegram_bot_token ? 'text' : 'password'}
                 value={formData.telegram_bot_token}
-                onChange={(e) => setFormData({ ...formData, telegram_bot_token: e.target.value })}
+                onChange={(e) => handleInputChange('telegram_bot_token', e.target.value)}
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
@@ -474,7 +518,7 @@ const Settings: React.FC = () => {
               <input
                 type={showKeys.openrouter_api_key ? 'text' : 'password'}
                 value={formData.openrouter_api_key}
-                onChange={(e) => setFormData({ ...formData, openrouter_api_key: e.target.value })}
+                onChange={(e) => handleInputChange('openrouter_api_key', e.target.value)}
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}

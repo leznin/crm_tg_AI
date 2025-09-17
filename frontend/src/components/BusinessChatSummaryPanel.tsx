@@ -2,41 +2,40 @@ import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Bot, MessageSquare, Lightbulb, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react';
 
-const ChatSummaryPanel: React.FC = () => {
-  const { activeChat, getChatSummary } = useAppContext();
+interface BusinessChatSummaryPanelProps {
+  onReplySelect?: (reply: string) => void;
+}
+
+const BusinessChatSummaryPanel: React.FC<BusinessChatSummaryPanelProps> = ({ onReplySelect }) => {
+  const { activeBusinessChat } = useAppContext();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
   const [summary, setSummary] = useState<any>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
-  if (!activeChat) return null;
+  if (!activeBusinessChat) return null;
 
   const handleGetSummary = async () => {
-    if (!activeChat) return;
+    if (!activeBusinessChat) return;
 
     setIsLoadingSummary(true);
     try {
       // Имитация API вызова
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Получаем существующее резюме или создаем новое
-      const existingSummary = getChatSummary(activeChat.id);
-      if (existingSummary) {
-        setSummary(existingSummary);
-      } else {
-        // Создаем новое резюме
-        const newSummary = {
-          summary: 'Анализ диалога показывает активное обсуждение проекта. Пользователь проявляет интерес к деталям и просит уточнить сроки.',
-          key_points: [
-            'Обсуждение требований к проекту',
-            'Вопросы по срокам выполнения',
-            'Запрос на дополнительную информацию'
-          ],
-          sentiment: 'neutral' as const,
-          last_updated: new Date().toISOString()
-        };
-        setSummary(newSummary);
-      }
+      // Создаем новое резюме для бизнес-чата
+      const newSummary = {
+        summary: 'Обсуждение бизнес-предложения и условий сотрудничества. Клиент проявляет интерес к продукту и просит уточнить детали.',
+        key_points: [
+          'Бизнес-предложение рассмотрено',
+          'Обсуждение условий оплаты',
+          'Планирование презентации продукта',
+          'Запрос на дополнительные материалы'
+        ],
+        sentiment: 'positive' as const,
+        last_updated: new Date().toISOString()
+      };
+      setSummary(newSummary);
     } catch (error) {
       console.error('Error getting summary:', error);
     } finally {
@@ -45,10 +44,10 @@ const ChatSummaryPanel: React.FC = () => {
   };
 
   const suggestedReplies = [
-    'Да, конечно! Давайте встретимся в пятницу в 14:00.',
-    'Отправлю вам детальное предложение до конца дня.',
-    'Хорошо, учту все ваши пожелания в проекте.',
-    'Спасибо за обратную связь! Внесу правки.'
+    'Да, конечно! Подготовлю презентацию к завтрашнему дню.',
+    'Отправлю вам детальные условия сотрудничества до конца дня.',
+    'Хорошо, учту все ваши пожелания в предложении.',
+    'Спасибо за обратную связь! Внесу правки и пришлю обновленный вариант.'
   ];
 
   const getSentimentColor = (sentiment: string) => {
@@ -68,7 +67,7 @@ const ChatSummaryPanel: React.FC = () => {
   };
 
   return (
-    <div className={`bg-surface-50/70 backdrop-blur-md border-l border-white/5 transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-80'} flex-shrink-0 hidden lg:flex lg:flex-col shadow-elevated-sm`}>
+    <div className={`bg-surface-50/70 backdrop-blur-md border-l border-white/5 transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-80'} flex-shrink-0 hidden md:flex md:flex-col shadow-elevated-sm`}>
       {/* Collapse button */}
       <div className="border-b border-white/5 p-2">
         <button
@@ -164,7 +163,7 @@ const ChatSummaryPanel: React.FC = () => {
                 <Lightbulb className="w-5 h-5 text-yellow-600" />
                 <h3 className="font-medium text-gray-700">Вопрос AI</h3>
               </div>
-              
+
               <textarea
                 value={aiQuestion}
                 onChange={(e) => setAiQuestion(e.target.value)}
@@ -172,7 +171,7 @@ const ChatSummaryPanel: React.FC = () => {
                 className="w-full p-3 text-xs rounded-md resize-none bg-surface-200/40 border border-white/5 focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500/60 text-gray-200 placeholder:text-gray-500 transition-colors"
                 rows={3}
               />
-              
+
               <button className="mt-2 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-2 px-4 rounded-md text-xs font-medium hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 transition-all shadow-glow-blue">
                 Получить ответ
               </button>
@@ -184,15 +183,16 @@ const ChatSummaryPanel: React.FC = () => {
                 <TrendingUp className="w-5 h-5 text-green-600" />
                 <h3 className="font-medium text-emerald-300 text-sm">Предложенные ответы</h3>
               </div>
-              
+
               <div className="space-y-2">
                 {suggestedReplies.map((reply, index) => (
                   <button
                     key={index}
                     className="w-full text-left p-2 bg-surface-100/40 border border-emerald-500/20 rounded-md text-xs hover:bg-emerald-500/10 hover:border-emerald-400/30 transition-all duration-200 text-gray-200"
                     onClick={() => {
-                      // Here you would normally set this as the message text
-                      console.log('Selected reply:', reply);
+                      if (onReplySelect) {
+                        onReplySelect(reply);
+                      }
                     }}
                   >
                     {reply}
@@ -226,4 +226,4 @@ const ChatSummaryPanel: React.FC = () => {
   );
 };
 
-export default ChatSummaryPanel;
+export default BusinessChatSummaryPanel;

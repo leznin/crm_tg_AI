@@ -3,6 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Send, ArrowLeft, Info, User, Paperclip, Image, FileText, AlertTriangle, AlertCircle } from 'lucide-react';
 import AccountModal from './AccountModal';
+import BusinessChatSummaryPanel from './BusinessChatSummaryPanel';
 import { BusinessMessage } from '../types';
 
 const BusinessChatWindow: React.FC = () => {
@@ -341,21 +342,24 @@ const BusinessChatWindow: React.FC = () => {
           </div>
         )}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {isLoadingBusinessMessages ? (
-            <div className="flex justify-center items-center h-full">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-          ) : businessMessages.length === 0 ? (
-            <div className="flex justify-center items-center h-full">
-              <p className="text-gray-400">Нет сообщений</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {businessMessages.slice().reverse().map(renderMessage)}
-            </div>
-          )}
+        {/* Messages and Summary Panel */}
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-4">
+            {isLoadingBusinessMessages ? (
+              <div className="flex justify-center items-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
+            ) : businessMessages.length === 0 ? (
+              <div className="flex justify-center items-center h-full">
+                <p className="text-gray-400">Нет сообщений</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {businessMessages.slice().reverse().map(renderMessage)}
+              </div>
+            )}
+          </div>
+          <BusinessChatSummaryPanel onReplySelect={(reply) => setMessageText(reply)} />
         </div>
 
         {/* Input */}
