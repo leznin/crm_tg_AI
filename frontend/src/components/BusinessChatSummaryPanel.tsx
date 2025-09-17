@@ -12,6 +12,8 @@ const BusinessChatSummaryPanel: React.FC<BusinessChatSummaryPanelProps> = ({ onR
   const [aiQuestion, setAiQuestion] = useState('');
   const [summary, setSummary] = useState<any>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
 
   if (!activeBusinessChat) return null;
 
@@ -20,35 +22,57 @@ const BusinessChatSummaryPanel: React.FC<BusinessChatSummaryPanelProps> = ({ onR
 
     setIsLoadingSummary(true);
     try {
-      // Имитация API вызова
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const response = await fetch(`/api/v1/business-accounts/chats/${activeBusinessChat.id}/summary`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      // Создаем новое резюме для бизнес-чата
-      const newSummary = {
-        summary: 'Обсуждение бизнес-предложения и условий сотрудничества. Клиент проявляет интерес к продукту и просит уточнить детали.',
-        key_points: [
-          'Бизнес-предложение рассмотрено',
-          'Обсуждение условий оплаты',
-          'Планирование презентации продукта',
-          'Запрос на дополнительные материалы'
-        ],
-        sentiment: 'positive' as const,
-        last_updated: new Date().toISOString()
-      };
-      setSummary(newSummary);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const summaryData = await response.json();
+      setSummary(summaryData);
     } catch (error) {
       console.error('Error getting summary:', error);
+      // Show error message to user
+      alert('Ошибка при получении резюме. Проверьте настройки OpenRouter API.');
     } finally {
       setIsLoadingSummary(false);
     }
   };
 
-  const suggestedReplies = [
-    'Да, конечно! Подготовлю презентацию к завтрашнему дню.',
-    'Отправлю вам детальные условия сотрудничества до конца дня.',
-    'Хорошо, учту все ваши пожелания в предложении.',
-    'Спасибо за обратную связь! Внесу правки и пришлю обновленный вариант.'
-  ];
+  const handleGetAISuggestions = async () => {
+    if (!activeBusinessChat) return;
+
+    setIsLoadingSuggestions(true);
+    try {
+      const response = await fetch(`/api/v1/business-accounts/chats/${activeBusinessChat.id}/suggestions`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const suggestionsData = await response.json();
+      setAiSuggestions(suggestionsData.suggestions || []);
+    } catch (error) {
+      console.error('Error getting AI suggestions:', error);
+      // Show error message to user
+      alert('Ошибка при получении предложений AI. Проверьте настройки OpenRouter API.');
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
 
   const getSentimentColor = (sentiment: string) => {
     switch (sentiment) {
@@ -179,46 +203,58 @@ const BusinessChatSummaryPanel: React.FC<BusinessChatSummaryPanelProps> = ({ onR
 
             {/* Suggested Replies */}
             <div className="rounded-lg p-4 bg-gradient-to-br from-emerald-600/20 via-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
-              <div className="flex items-center space-x-2 mb-3">
-                <TrendingUp className="w-5 h-5 text-green-600" />
-                <h3 className="font-medium text-emerald-300 text-sm">Предложенные ответы</h3>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  <h3 className="font-medium text-emerald-300 text-sm">Предложенные ответы</h3>
+                </div>
+                <button
+                  onClick={handleGetAISuggestions}
+                  disabled={isLoadingSuggestions}
+                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 text-white text-[10px] rounded-md transition-colors flex items-center space-x-1 disabled:opacity-50"
+                >
+                  {isLoadingSuggestions ? (
+                    <>
+                      <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                      <span>Загрузка...</span>
+                    </>
+                  ) : (
+                    <span>Помощь AI</span>
+                  )}
+                </button>
               </div>
 
               <div className="space-y-2">
-                {suggestedReplies.map((reply, index) => (
-                  <button
-                    key={index}
-                    className="w-full text-left p-2 bg-surface-100/40 border border-emerald-500/20 rounded-md text-xs hover:bg-emerald-500/10 hover:border-emerald-400/30 transition-all duration-200 text-gray-200"
-                    onClick={() => {
-                      if (onReplySelect) {
-                        onReplySelect(reply);
-                      }
-                    }}
-                  >
-                    {reply}
-                  </button>
-                ))}
+                {aiSuggestions.length > 0 ? (
+                  <>
+                    {/* AI Generated Suggestions */}
+                    <div className="text-[10px] text-emerald-400 font-medium mb-2">AI предложения:</div>
+                    {aiSuggestions.map((suggestion, index) => (
+                      <button
+                        key={`ai-${index}`}
+                        className="w-full text-left p-2 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border border-emerald-400/30 rounded-md text-xs hover:from-emerald-500/30 hover:to-teal-500/30 hover:border-emerald-300/50 transition-all duration-200 text-gray-200"
+                        onClick={() => {
+                          if (onReplySelect) {
+                            onReplySelect(suggestion);
+                          }
+                        }}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  /* Empty state when no AI suggestions yet */
+                  <div className="text-center py-4">
+                    <TrendingUp className="w-6 h-6 text-gray-500 mx-auto mb-2" />
+                    <p className="text-[11px] text-gray-500">
+                      Нажмите "Помощь AI" для получения персонализированных предложений ответов
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* AI Stats */}
-            <div className="rounded-lg p-4 bg-gradient-to-br from-purple-600/20 via-indigo-600/20 to-blue-600/20 border border-indigo-500/20">
-              <h3 className="font-medium text-indigo-300 mb-3 text-sm">AI Статистика</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-200">Обработано сообщений:</span>
-                  <span className="text-[11px] font-medium text-indigo-100">247</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-200">Точность анализа:</span>
-                  <span className="text-[11px] font-medium text-indigo-100">94%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-200">Время ответа:</span>
-                  <span className="text-[11px] font-medium text-indigo-100">0.8с</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}

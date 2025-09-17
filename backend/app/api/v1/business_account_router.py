@@ -15,7 +15,11 @@ from app.schemas.business_account_schema import (
     SendMessageRequest,
     SendPhotoRequest,
     SendDocumentRequest,
-    BusinessAccountStatsResponse
+    BusinessAccountStatsResponse,
+    ChatSummaryRequest,
+    ChatSummaryResponse,
+    ChatSuggestionsRequest,
+    ChatSuggestionsResponse
 )
 
 router = APIRouter(prefix="/business-accounts", tags=["business-accounts"])
@@ -207,9 +211,55 @@ async def search_messages(
     """Search messages by text content"""
     service = BusinessAccountService(db)
     messages = service.search_messages(business_account_id, query, limit)
-    
+
     return {
         "messages": [BusinessMessageResponse.from_orm(msg) for msg in messages],
         "total": len(messages),
         "query": query
     }
+
+
+@router.post("/chats/{chat_id}/summary", response_model=ChatSummaryResponse)
+async def generate_chat_summary(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate AI summary for a business chat"""
+    service = BusinessAccountService(db)
+
+    try:
+        summary = await service.generate_chat_summary(
+            user_id=current_user.id,
+            chat_id=chat_id
+        )
+
+        return summary
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
+
+
+@router.post("/chats/{chat_id}/suggestions", response_model=ChatSuggestionsResponse)
+async def generate_chat_suggestions(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate AI suggestions for chat replies"""
+    service = BusinessAccountService(db)
+
+    try:
+        suggestions = await service.generate_chat_suggestions(
+            user_id=current_user.id,
+            chat_id=chat_id
+        )
+
+        return suggestions
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate suggestions: {str(e)}")

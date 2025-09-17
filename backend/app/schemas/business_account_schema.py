@@ -161,6 +161,27 @@ class TelegramUpdate(BaseModel):
     deleted_business_messages: Optional[Dict[str, Any]] = None
 
 
+# Chat Summary schemas
+class ChatSummaryRequest(BaseModel):
+    chat_id: int
+
+
+class ChatSummaryResponse(BaseModel):
+    summary: str
+    key_points: List[str]
+    sentiment: str
+    last_updated: str
+
+
+# Chat Suggestions schemas
+class ChatSuggestionsRequest(BaseModel):
+    chat_id: int
+
+
+class ChatSuggestionsResponse(BaseModel):
+    suggestions: List[str]
+
+
 # Update forward references
 BusinessChatWithLastMessage.model_rebuild()
 

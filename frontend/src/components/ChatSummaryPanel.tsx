@@ -16,29 +16,26 @@ const ChatSummaryPanel: React.FC = () => {
 
     setIsLoadingSummary(true);
     try {
-      // Имитация API вызова
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // For regular chats, we need to check if this is a business chat or regular chat
+      // For now, assume it's a business chat since regular chats might not have the same API
+      const response = await fetch(`/api/v1/business-accounts/chats/${activeChat.id}/summary`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      // Получаем существующее резюме или создаем новое
-      const existingSummary = getChatSummary(activeChat.id);
-      if (existingSummary) {
-        setSummary(existingSummary);
-      } else {
-        // Создаем новое резюме
-        const newSummary = {
-          summary: 'Анализ диалога показывает активное обсуждение проекта. Пользователь проявляет интерес к деталям и просит уточнить сроки.',
-          key_points: [
-            'Обсуждение требований к проекту',
-            'Вопросы по срокам выполнения',
-            'Запрос на дополнительную информацию'
-          ],
-          sentiment: 'neutral' as const,
-          last_updated: new Date().toISOString()
-        };
-        setSummary(newSummary);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+
+      const summaryData = await response.json();
+      setSummary(summaryData);
     } catch (error) {
       console.error('Error getting summary:', error);
+      // Show error message to user
+      alert('Ошибка при получении резюме. Проверьте настройки OpenRouter API.');
     } finally {
       setIsLoadingSummary(false);
     }
@@ -201,24 +198,6 @@ const ChatSummaryPanel: React.FC = () => {
               </div>
             </div>
 
-            {/* AI Stats */}
-            <div className="rounded-lg p-4 bg-gradient-to-br from-purple-600/20 via-indigo-600/20 to-blue-600/20 border border-indigo-500/20">
-              <h3 className="font-medium text-indigo-300 mb-3 text-sm">AI Статистика</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-200">Обработано сообщений:</span>
-                  <span className="text-[11px] font-medium text-indigo-100">247</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-200">Точность анализа:</span>
-                  <span className="text-[11px] font-medium text-indigo-100">94%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-200">Время ответа:</span>
-                  <span className="text-[11px] font-medium text-indigo-100">0.8с</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}

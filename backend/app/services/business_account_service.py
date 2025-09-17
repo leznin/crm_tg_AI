@@ -8,6 +8,9 @@ import json
 from app.db.repositories.business_account_repository import BusinessAccountRepository
 from app.models.business_account import BusinessAccount, BusinessChat, BusinessMessage
 from app.services.settings_service import SettingsService
+from app.services.openrouter_service import OpenRouterService
+from app.schemas.business_account_schema import ChatSummaryResponse, ChatSuggestionsResponse
+from app.schemas.settings_schema import KeyTypeEnum, DataTypeEnum, PromptTypeEnum
 
 
 logger = logging.getLogger(__name__)
@@ -399,5 +402,278 @@ class BusinessAccountService:
     def search_messages(self, business_account_id: int, query: str, limit: int = 20) -> List[BusinessMessage]:
         """Search messages by text content"""
         return self.repository.search_messages(business_account_id, query, limit)
+
+    async def generate_chat_summary(self, user_id: int, chat_id: int) -> ChatSummaryResponse:
+        """Generate AI summary for a chat using OpenRouter"""
+        try:
+            # Get chat messages (last 100 messages for summary)
+            # Note: get_messages_for_chat returns messages in desc order (newest first), so we reverse it
+            messages = self.repository.get_messages_for_chat(chat_id, limit=100)
+            messages.reverse()  # Reverse to get chronological order (oldest first)
+
+            if not messages:
+                raise ValueError("No messages found in chat")
+
+            # Get OpenRouter API key
+            openrouter_key = self.settings_service.get_api_key(user_id, KeyTypeEnum.OPENROUTER, decrypt=True)
+            logger.info(f"OpenRouter key found: {bool(openrouter_key)}")
+            if not openrouter_key:
+                raise ValueError("OpenRouter API key not configured")
+
+            # Get text model for summary generation
+            text_model = self.settings_service.get_model_by_data_type(user_id, DataTypeEnum.TEXT)
+            if not text_model:
+                raise ValueError("Text model not configured in settings")
+
+            # Get summary prompt from settings
+            summary_prompt = self.settings_service.get_prompt_by_type(user_id, PromptTypeEnum.SUMMARY)
+            if not summary_prompt:
+                summary_prompt = """Проанализируй этот диалог и создай краткое, но информативное резюме.
+
+Требования к резюме:
+- Пиши на русском языке
+- Будь кратким, но содержательным (3-5 предложений)
+- Выдели основные темы и цели разговора
+- Укажи достигнутые договоренности или решения
+- Опиши общий тон общения
+
+Извлеки ключевые моменты:
+- Важные решения, договоренности или обещания
+- Конкретные даты, сроки, суммы
+- Запросы информации или помощи
+- Выраженные мнения или предпочтения
+
+Определи настроение диалога:
+- positive: дружелюбный, продуктивный, позитивный разговор
+- negative: конфликтный, негативный, раздраженный тон
+- neutral: деловой, нейтральный, информационный обмен"""
+
+            # Format messages for AI
+            formatted_messages = []
+            for msg in messages:
+                if msg.is_outgoing:
+                    # Исходящее сообщение от бизнес-аккаунта
+                    sender_label = "Вы (бизнес-аккаунт)"
+                else:
+                    # Входящее сообщение от клиента
+                    sender_name = f"{msg.sender_first_name or ''} {msg.sender_last_name or ''}".strip()
+                    if not sender_name and msg.sender_username:
+                        sender_name = f"@{msg.sender_username}"
+                    if not sender_name:
+                        sender_name = "Клиент"
+                    sender_label = sender_name
+
+                formatted_messages.append(f"{sender_label}: {msg.text}")
+
+            chat_history = "\n".join(formatted_messages)
+
+            # Create AI prompt
+            full_prompt = f"""{summary_prompt}
+
+История чата:
+{chat_history}
+
+ВАЖНО: Отвечай ТОЛЬКО в формате JSON. Не добавляй никакого дополнительного текста, объяснений, markdown formatting (```json) или других символов.
+
+Формат ответа (ТОЛЬКО чистый JSON, без markdown):
+{{
+  "summary": "Краткое резюме диалога на русском языке (3-5 предложений)",
+  "key_points": [
+    "Первый ключевой момент",
+    "Второй ключевой момент",
+    "Третий ключевой момент"
+  ],
+  "sentiment": "positive|negative|neutral"
+}}"""
+
+            # Call OpenRouter API
+            async with OpenRouterService(openrouter_key) as openrouter:
+                response = await openrouter.chat_completion(
+                    model=text_model.model_name,
+                    messages=[
+                        {"role": "user", "content": full_prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=1000
+                )
+
+            # Parse AI response
+            ai_response = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            try:
+                # Clean the response from markdown formatting
+                cleaned_response = ai_response.strip()
+
+                # Remove markdown code blocks (```json ... ```)
+                if cleaned_response.startswith('```json'):
+                    cleaned_response = cleaned_response[7:]  # Remove ```json
+                if cleaned_response.startswith('```'):
+                    cleaned_response = cleaned_response[3:]  # Remove ```
+                if cleaned_response.endswith('```'):
+                    cleaned_response = cleaned_response[:-3]  # Remove trailing ```
+
+                cleaned_response = cleaned_response.strip()
+
+                # Try to parse JSON response
+                import json
+                parsed_response = json.loads(cleaned_response)
+
+                summary = parsed_response.get("summary", ai_response)
+                key_points = parsed_response.get("key_points", [])
+                sentiment = parsed_response.get("sentiment", "neutral")
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse JSON response: {e}")
+                logger.warning(f"Raw AI response: {ai_response}")
+                # Fallback if AI didn't return valid JSON
+                summary = ai_response
+                key_points = []
+                sentiment = "neutral"
+
+            return ChatSummaryResponse(
+                summary=summary,
+                key_points=key_points,
+                sentiment=sentiment,
+                last_updated=datetime.now().isoformat()
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating chat summary for chat {chat_id}: {e}")
+            raise
+
+    async def generate_chat_suggestions(self, user_id: int, chat_id: int) -> ChatSuggestionsResponse:
+        """Generate AI suggestions for chat replies using OpenRouter"""
+        try:
+            # Get chat messages (last 50 messages for suggestions)
+            messages = self.repository.get_messages_for_chat(chat_id, limit=50)
+            messages.reverse()  # Reverse to get chronological order (oldest first)
+
+            if not messages:
+                raise ValueError("No messages found in chat")
+
+            # Get OpenRouter API key
+            openrouter_key = self.settings_service.get_api_key(user_id, KeyTypeEnum.OPENROUTER, decrypt=True)
+            if not openrouter_key:
+                raise ValueError("OpenRouter API key not configured")
+
+            # Get text model for suggestions generation
+            text_model = self.settings_service.get_model_by_data_type(user_id, DataTypeEnum.TEXT)
+            if not text_model:
+                raise ValueError("Text model not configured in settings")
+
+            # Get suggestions prompt from settings
+            suggestions_prompt = self.settings_service.get_prompt_by_type(user_id, PromptTypeEnum.SUGGESTIONS)
+            if not suggestions_prompt:
+                suggestions_prompt = """Проанализируй историю чата и предложи 3-4 варианта ответа от лица бизнес-аккаунта.
+
+В истории чата:
+- "Вы (бизнес-аккаунт)" - это ваши предыдущие сообщения
+- Имена клиентов - это входящие сообщения от клиентов
+
+Требования к ответам:
+- Пиши на русском языке
+- Будь кратким и по существу
+- Учитывай контекст и предыдущие сообщения
+- Предлагай профессиональные и уместные варианты ответа
+- Каждый ответ должен быть естественным продолжением разговора
+
+Учитывай роль бизнес-аккаунта и специфику общения с клиентами."""
+
+            # Format messages for AI
+            formatted_messages = []
+            for msg in messages:
+                if msg.is_outgoing:
+                    # Исходящее сообщение от бизнес-аккаунта
+                    sender_label = "Вы (бизнес-аккаунт)"
+                else:
+                    # Входящее сообщение от клиента
+                    sender_name = f"{msg.sender_first_name or ''} {msg.sender_last_name or ''}".strip()
+                    if not sender_name and msg.sender_username:
+                        sender_name = f"@{msg.sender_username}"
+                    if not sender_name:
+                        sender_name = "Клиент"
+                    sender_label = sender_name
+
+                formatted_messages.append(f"{sender_label}: {msg.text}")
+
+            chat_history = "\n".join(formatted_messages)
+
+            # Create AI prompt
+            full_prompt = f"""{suggestions_prompt}
+
+История чата:
+{chat_history}
+
+ВАЖНО: Отвечай ТОЛЬКО в формате JSON. Не добавляй никакого дополнительного текста или объяснений.
+
+Формат ответа (ТОЛЬКО чистый JSON, без markdown):
+{{
+  "suggestions": [
+    "Первый вариант ответа",
+    "Второй вариант ответа",
+    "Третий вариант ответа",
+    "Четвертый вариант ответа"
+  ]
+}}"""
+
+            # Call OpenRouter API
+            async with OpenRouterService(openrouter_key) as openrouter:
+                response = await openrouter.chat_completion(
+                    model=text_model.model_name,
+                    messages=[
+                        {"role": "user", "content": full_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+
+            # Parse AI response
+            ai_response = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            try:
+                # Clean the response from markdown formatting
+                cleaned_response = ai_response.strip()
+
+                # Remove markdown code blocks
+                if cleaned_response.startswith('```json'):
+                    cleaned_response = cleaned_response[7:]
+                if cleaned_response.startswith('```'):
+                    cleaned_response = cleaned_response[3:]
+                if cleaned_response.endswith('```'):
+                    cleaned_response = cleaned_response[:-3]
+
+                cleaned_response = cleaned_response.strip()
+
+                # Try to parse JSON response
+                import json
+                parsed_response = json.loads(cleaned_response)
+
+                suggestions = parsed_response.get("suggestions", [])
+
+                # Ensure we have a list of strings
+                if not isinstance(suggestions, list):
+                    suggestions = []
+
+                # Filter out non-string suggestions and limit to 4
+                suggestions = [str(s) for s in suggestions if s][:4]
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse JSON response for suggestions: {e}")
+                logger.warning(f"Raw AI response: {ai_response}")
+                # Fallback: try to extract suggestions from text
+                suggestions = []
+                lines = ai_response.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and len(line) > 10 and not line.startswith(('Формат', 'ВАЖНО', 'История', '{', '}')):
+                        suggestions.append(line[:200])  # Limit length
+                        if len(suggestions) >= 4:
+                            break
+
+            return ChatSuggestionsResponse(suggestions=suggestions)
+
+        except Exception as e:
+            logger.error(f"Error generating chat suggestions for chat {chat_id}: {e}")
+            raise
 
 
